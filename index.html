@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#070b14">
+  <title>CyberKnights | Command Centre</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="CyberKnights home">
+      <span class="brand-mark">♜</span>
+      <span><strong>CYBERKNIGHTS</strong><small>INTELLIGENT TRANSPORT SYSTEMS</small></span>
+    </a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a class="active" href="#overview">Overview</a>
+      <a href="#track">3D Track</a>
+      <a href="#telemetry">Telemetry</a>
+      <a href="#sensors">Sensors</a>
+      <a href="#toll">Toll Plaza</a>
+    </nav>
+    <div class="top-status"><span class="pulse-dot"></span><span>DEMO MODE</span></div>
+  </header>
+
+  <main>
+    <section id="overview" class="welcome-row">
+      <div>
+        <p class="eyebrow"><span class="eyebrow-line"></span> COMMAND CENTRE / 01</p>
+        <h1>Smart Mobility <span>Dashboard</span></h1>
+        <p class="subheading">A unified view of vehicle movement, speed monitoring, and toll operations.</p>
+      </div>
+      <div class="demo-notice"><span class="notice-icon">ⓘ</span><span><strong>Simulation active</strong><small>Arduino hardware is not connected</small></span></div>
+    </section>
+
+    <section class="metric-grid" aria-label="Key statistics">
+      <article class="metric-card">
+        <div class="metric-top"><span>VEHICLE SPEED</span><span class="metric-icon cyan">↗</span></div>
+        <div class="metric-value"><strong id="speedValue">0</strong><span>km/h</span></div>
+        <div class="metric-foot"><span class="mini-dot cyan-dot"></span><span id="speedCondition">Awaiting simulation</span></div>
+      </article>
+      <article class="metric-card">
+        <div class="metric-top"><span>VEHICLES DETECTED</span><span class="metric-icon blue">▤</span></div>
+        <div class="metric-value"><strong id="vehicleCount">0</strong><span>vehicles</span></div>
+        <div class="metric-foot"><span class="mini-dot blue-dot"></span><span>At toll plaza</span></div>
+      </article>
+      <article class="metric-card">
+        <div class="metric-top"><span>TOLL REVENUE</span><span class="metric-icon green">₹</span></div>
+        <div class="metric-value"><strong id="revenue">₹0</strong></div>
+        <div class="metric-foot"><span class="mini-dot green-dot"></span><span>Demo collection total</span></div>
+      </article>
+      <article class="metric-card">
+        <div class="metric-top"><span>BARRIER STATUS</span><span class="metric-icon amber">⌁</span></div>
+        <div class="metric-value status-value"><strong id="barrierSummary">CLOSED</strong></div>
+        <div class="metric-foot"><span class="mini-dot amber-dot" id="barrierSummaryDot"></span><span>Smart toll control</span></div>
+      </article>
+    </section>
+
+    <section id="track" class="panel track-panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">DIGITAL TWIN / 02</p><h2>3D Track Simulation</h2><p class="panel-description">A miniature interactive view of the smart highway and toll plaza.</p></div>
+        <div class="scene-badges"><span class="live-badge"><span class="pulse-dot"></span> ANIMATED SCENE</span><span class="scene-badge">NOT LIVE HARDWARE</span></div>
+      </div>
+      <div class="scene-wrap">
+        <div id="threeScene" class="three-scene" aria-label="3D highway simulation">
+          <div class="scene-loading"><span class="loader"></span><span>Preparing 3D scene…</span></div>
+        </div>
+        <div class="scene-overlay scene-overlay-left"><span class="overlay-label">ROAD NETWORK</span><strong>SEGMENT A <i>→</i> TOLL GATE</strong></div>
+        <div class="scene-overlay scene-overlay-right"><span class="overlay-label">VEHICLE STATUS</span><strong id="sceneVehicleStatus">IDLE</strong><small id="sceneDirection">Direction: STOP</small></div>
+        <div class="scene-legend"><span><i class="legend-car"></i> Vehicle</span><span><i class="legend-road"></i> Roadway</span><span><i class="legend-gate"></i> Toll barrier</span></div>
+      </div>
+      <div class="scene-footer"><span><span class="mini-dot cyan-dot"></span> 3D scene runs locally in your browser</span><span>Tip: drag to rotate · scroll to zoom</span></div>
+    </section>
+
+    <div class="content-grid">
+      <section class="panel speed-panel">
+        <div class="panel-heading compact"><div><p class="eyebrow">SPEED MONITOR / 03</p><h2>Vehicle Telemetry</h2></div><span class="pill">SIMULATED</span></div>
+        <div class="speed-layout">
+          <div class="speed-gauge" id="speedGaugeRing" style="--gauge:0deg">
+            <div class="gauge-inner"><strong id="gaugeNumber">0</strong><span>KM/H</span></div>
+          </div>
+          <div class="speed-details">
+            <div class="detail-row"><span>Maximum speed</span><strong><span id="maxSpeed">0</span> km/h</strong></div>
+            <div class="detail-row"><span>Distance travelled</span><strong><span id="distance">0.00</span> km</strong></div>
+            <div class="detail-row"><span>Direction</span><strong id="direction">STOP</strong></div>
+            <div class="detail-row"><span>Speed limit</span><strong>60 km/h</strong></div>
+          </div>
+        </div>
+        <div class="gauge-track"><div id="speedGauge" class="gauge-fill"></div></div>
+        <div class="button-row"><button id="startBtn" class="btn btn-primary"><span>▶</span> Start</button><button id="pauseBtn" class="btn btn-secondary">Ⅱ Pause</button><button id="resetBtn" class="btn btn-quiet">↻ Reset</button></div>
+      </section>
+
+      <section id="telemetry" class="panel">
+        <div class="panel-heading compact"><div><p class="eyebrow">PERFORMANCE / 04</p><h2>Live Telemetry</h2></div><span class="chart-legend"><i></i> Speed</span></div>
+        <div class="telemetry-metric"><div class="metric-label"><span>Motor power</span><strong id="motorPercent">0%</strong></div><div class="bar-track"><div id="motorBar" class="bar-fill"></div></div></div>
+        <div class="telemetry-metric"><div class="metric-label"><span>Illustrative battery level</span><strong id="batteryPercent">100%</strong></div><div class="bar-track"><div id="batteryBar" class="bar-fill battery"></div></div></div>
+        <div class="chart-heading"><h3>Speed history</h3><span>LAST 30 READINGS</span></div>
+        <div class="chart-wrap"><canvas id="speedChart" height="160"></canvas></div>
+      </section>
+
+      <section id="sensors" class="panel">
+        <div class="panel-heading compact"><div><p class="eyebrow">INPUT MONITOR / 05</p><h2>System & Sensors</h2></div><span class="pill pill-amber">DEMO</span></div>
+        <div class="sensor-list">
+          <div class="sensor-row"><span class="sensor-symbol">⌁</span><span class="sensor-copy"><strong>Gesture receiver</strong><small>Movement input channel</small></span><strong id="gestureState" class="state-tag">STANDBY</strong></div>
+          <div class="sensor-row"><span class="sensor-symbol">◎</span><span class="sensor-copy"><strong>Speed sensor</strong><small>Vehicle speed detection</small></span><strong id="sensorState" class="state-tag">READY</strong></div>
+          <div class="sensor-row"><span class="sensor-symbol">▣</span><span class="sensor-copy"><strong>Arduino Uno</strong><small>Hardware connection</small></span><strong class="state-tag state-offline">OFFLINE</strong></div>
+        </div>
+        <label for="directionSelect" class="input-label">Simulation direction</label>
+        <select id="directionSelect">
+          <option value="FORWARD">Forward</option><option value="LEFT">Left</option><option value="RIGHT">Right</option><option value="REVERSE">Reverse</option><option value="STOP">Stop</option>
+        </select>
+      </section>
+
+      <section id="toll" class="panel toll-panel">
+        <div class="panel-heading compact"><div><p class="eyebrow">ACCESS CONTROL / 06</p><h2>Smart Toll Plaza</h2></div><span id="barrierPill" class="pill pill-amber">BARRIER CLOSED</span></div>
+        <div class="toll-visual">
+          <div class="booth-icon"><span class="booth-window"></span><span class="booth-label">TOLL</span></div>
+          <div class="barrier-visual" id="barrier"><span class="barrier-post"></span><span class="barrier-pole"></span><span class="barrier-base"></span></div>
+          <span class="barrier-caption" id="barrierCaption">ACCESS RESTRICTED</span>
+        </div>
+        <div class="toll-stats">
+          <div class="toll-stat"><span>Vehicles passed</span><strong id="vehicleCountDetail">0</strong></div>
+          <div class="toll-stat"><span>Toll openings</span><strong id="tollCount">0</strong></div>
+        </div>
+        <div class="button-row"><button id="toggleBarrierBtn" class="btn btn-primary">⇅ Toggle barrier</button><button id="vehicleBtn" class="btn btn-secondary">＋ Vehicle passed</button></div>
+      </section>
+    </div>
+
+    <section class="panel activity-panel">
+      <div class="panel-heading compact"><div><p class="eyebrow">EVENT STREAM / 07</p><h2>System Activity</h2><p class="panel-description">Recent events from the dashboard simulation.</p></div><button id="clearLogBtn" class="btn btn-quiet">Clear log</button></div>
+      <div id="activityLog" class="activity-log" aria-live="polite"><p class="empty-log">Dashboard initialized in demo mode.</p></div>
+    </section>
+  </main>
+
+  <footer><span class="footer-brand">♜ CYBERKNIGHTS</span><span>SMART MOBILITY PROJECT</span><span>DEMO BUILD <b>01.0</b></span></footer>
+  <script type="module" src="script.js"></script>
+</body>
+</html>
