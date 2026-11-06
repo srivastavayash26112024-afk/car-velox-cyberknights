@@ -16,104 +16,138 @@ let timer = null;
 let history = [];
 let lastFrame = 0;
 
-// ===== REAL ARDUINO CONNECTION =====
-// Protocol: browser sends OPEN or CLOSE; Arduino replies GATE:OPEN / GATE:CLOSED.
-// Keep this baud rate identical to Serial.begin(9600) in toll_gate.ino.
+// ===== TWO INDEPENDENT ARDUINO CONNECTIONS =====
+// Toll controller and speed radar are separate boards. Each gets its own
+// Web Serial port and reader so both can remain connected simultaneously.
 let serialPort = null;
 let serialReader = null;
 let hardwareConnected = false;
 let hardwareDirection = "STOP";
 let serialBuffer = "";
 
-async function connectArduino() {
+let radarPort = null;
+let radarReader = null;
+let radarConnected = false;
+let radarBuffer = "";
+
+function serialSupported() {
   if (!("serial" in navigator)) {
-    alert("Web Serial is unavailable. Open this HTTPS site in Google Chrome or Microsoft Edge on a computer.");
-    return;
+    alert("Web Serial is unavailable. Open this HTTPS site in Chrome or Edge on a computer.");
+    return false;
   }
+  return true;
+}
+
+async function connectArduino() {
+  if (!serialSupported()) return;
   try {
     serialPort = await navigator.serial.requestPort();
     await serialPort.open({ baudRate: 9600 });
     hardwareConnected = true;
-    $("arduinoStatus").textContent = "ARDUINO CONNECTED";
-    $("arduinoConnectBtn").textContent = "Disconnect Arduino";
-    log("Arduino connected at 9600 baud.");
+    $("arduinoStatus").textContent = "TOLL ARDUINO CONNECTED";
+    $("arduinoConnectBtn").textContent = "Disconnect Toll";
+    log("Toll controller connected at 9600 baud.");
     const decoder = new TextDecoder();
     serialReader = serialPort.readable.getReader();
     while (true) {
       const { value, done } = await serialReader.read();
       if (done) break;
       serialBuffer += decoder.decode(value, { stream: true });
-      const lines = serialBuffer.split(/\r?\n/);
+      const lines = serialBuffer.split(/\\r?\\n/);
       serialBuffer = lines.pop() || "";
-      for (const line of lines) processArduinoData(line.trim());
+      for (const line of lines) processTollData(line.trim());
     }
   } catch (error) {
     console.error(error);
-    log("Arduino connection error: " + error.message);
+    log("Toll Arduino connection error: " + error.message);
   } finally {
-    if (serialReader) {
-      try { serialReader.releaseLock(); } catch (_) {}
-      serialReader = null;
-    }
-    const portToClose = serialPort;
-    serialPort = null;
-    hardwareConnected = false;
-    if (portToClose) {
-      try { await portToClose.close(); } catch (_) {}
-    }
-    $("arduinoStatus").textContent = "ARDUINO DISCONNECTED";
-    $("arduinoConnectBtn").textContent = "Connect Arduino";
+    if (serialReader) { try { serialReader.releaseLock(); } catch (_) {} serialReader = null; }
+    const port = serialPort; serialPort = null; hardwareConnected = false;
+    if (port) { try { await port.close(); } catch (_) {} }
+    $("arduinoStatus").textContent = "TOLL ARDUINO DISCONNECTED";
+    $("arduinoConnectBtn").textContent = "Connect Toll Arduino";
     update();
   }
 }
 
-function processArduinoData(line) {
+async function connectSpeedRadar() {
+  if (!serialSupported()) return;
+  try {
+    radarPort = await navigator.serial.requestPort();
+    await radarPort.open({ baudRate: 9600 });
+    radarConnected = true;
+    $("radarStatus").textContent = "SPEED RADAR CONNECTED";
+    $("radarConnectBtn").textContent = "Disconnect Radar";
+    log("Speed radar connected at 9600 baud.");
+    const decoder = new TextDecoder();
+    radarReader = radarPort.readable.getReader();
+    while (true) {
+      const { value, done } = await radarReader.read();
+      if (done) break;
+      radarBuffer += decoder.decode(value, { stream: true });
+      const lines = radarBuffer.split(/\\r?\\n/);
+      radarBuffer = lines.pop() || "";
+      for (const line of lines) processRadarData(line.trim());
+    }
+  } catch (error) {
+    console.error(error);
+    log("Speed radar connection error: " + error.message);
+  } finally {
+    if (radarReader) { try { radarReader.releaseLock(); } catch (_) {} radarReader = null; }
+    const port = radarPort; radarPort = null; radarConnected = false;
+    if (port) { try { await port.close(); } catch (_) {} }
+    $("radarStatus").textContent = "SPEED RADAR DISCONNECTED";
+    $("radarConnectBtn").textContent = "Connect Speed Radar";
+    update();
+  }
+}
+
+function processTollData(line) {
   if (!line) return;
   const normalized = line.toUpperCase();
-
   if (normalized === "GATE:OPEN" || normalized.includes("GATE OPENED")) {
-    barrierOpen = true;
-    update();
-    log("Physical toll gate is OPEN.");
-    return;
+    barrierOpen = true; update(); log("Physical toll gate is OPEN."); return;
   }
   if (normalized === "GATE:CLOSED" || normalized.includes("GATE CLOSED")) {
-    barrierOpen = false;
-    update();
-    log("Physical toll gate is CLOSED.");
+    barrierOpen = false; update(); log("Physical toll gate is CLOSED."); return;
+  }
+  if (normalized.startsWith("SENSOR:")) log("Toll controller " + line);
+}
+
+function processRadarData(line) {
+  if (!line) return;
+  // Supported line: speed = 25.5 km/h dir = A>B (or B>A).
+  // Also accept a plain "SPEED:25.5,DIR:A>B" telemetry line.
+  const match = line.match(/speed\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*km\\/h\\s+dir\\s*=\\s*(A>B|B>A)/i)
+    || line.match(/SPEED\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*,\\s*DIR\\s*:\\s*(A>B|B>A)/i);
+  if (!match) {
+    if (/^RADAR_READY$/i.test(line)) log("Speed radar is ready.");
     return;
   }
-
-  const match = line.match(/speed\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*km\/h\s+dir\s*=\s*(A>B|B>A)/i);
-  if (match) {
-    speed = parseFloat(match[1]);
-    hardwareDirection = match[2].toUpperCase();
-    maxSpeed = Math.max(maxSpeed, speed);
-    vehicleCount++;
-    running = speed > 0;
-    history.push(speed);
-    if (history.length > 30) history.shift();
-    update();
-    log("Vehicle detected: " + speed.toFixed(2) + " km/h, direction " + hardwareDirection);
-    return;
-  }
-
-  if (normalized.startsWith("SENSOR:")) log("Arduino " + line);
+  speed = Number(match[1]);
+  hardwareDirection = match[2].toUpperCase();
+  maxSpeed = Math.max(maxSpeed, speed);
+  vehicleCount++;
+  running = speed > 0;
+  history.push(speed);
+  if (history.length > 30) history.shift();
+  update();
+  log("Speed radar: " + speed.toFixed(1) + " km/h, direction " + hardwareDirection);
 }
 
 async function sendGateCommand(command) {
   if (!hardwareConnected || !serialPort || !serialPort.writable) {
-    log("Cannot send " + command + ": Arduino is not connected.");
+    log("Cannot send " + command + ": toll Arduino is not connected.");
     return false;
   }
   let writer;
   try {
     writer = serialPort.writable.getWriter();
-    await writer.write(new TextEncoder().encode(command + "\n"));
-    log("Sent " + command + " command to Arduino.");
+    await writer.write(new TextEncoder().encode(command + "\\n"));
+    log("Sent " + command + " command to toll Arduino.");
     return true;
   } catch (error) {
-    log("Failed to send command: " + error.message);
+    log("Failed to send toll command: " + error.message);
     return false;
   } finally {
     if (writer) writer.releaseLock();
@@ -121,22 +155,27 @@ async function sendGateCommand(command) {
 }
 
 async function disconnectArduino() {
-  if (serialReader) {
-    try { await serialReader.cancel(); } catch (_) {}
-  }
+  if (serialReader) { try { await serialReader.cancel(); } catch (_) {} }
+}
+async function disconnectSpeedRadar() {
+  if (radarReader) { try { await radarReader.cancel(); } catch (_) {} }
 }
 
-const arduinoPanel = document.createElement("div");
-arduinoPanel.style.cssText = "display:flex;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap;";
-arduinoPanel.innerHTML = `
-  <button id="arduinoConnectBtn" style="padding:10px 16px;border-radius:8px;border:1px solid #40e8f2;background:#10283b;color:#40e8f2;cursor:pointer;">Connect Arduino</button>
-  <span id="arduinoStatus" style="color:#ffbf69;">ARDUINO DISCONNECTED</span>
+const connectionPanel = document.createElement("div");
+connectionPanel.style.cssText = "display:flex;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap;";
+connectionPanel.innerHTML = `
+  <button id="arduinoConnectBtn" style="padding:10px 16px;border-radius:8px;border:1px solid #40e8f2;background:#10283b;color:#40e8f2;cursor:pointer;">Connect Toll Arduino</button>
+  <span id="arduinoStatus" style="color:#ffbf69;">TOLL ARDUINO DISCONNECTED</span>
+  <button id="radarConnectBtn" style="padding:10px 16px;border-radius:8px;border:1px solid #4a8dff;background:#10283b;color:#9fc3ff;cursor:pointer;">Connect Speed Radar</button>
+  <span id="radarStatus" style="color:#ffbf69;">SPEED RADAR DISCONNECTED</span>
 `;
 const activityArea = $("activityLog");
-if (activityArea) activityArea.parentElement.insertBefore(arduinoPanel, activityArea);
+if (activityArea) activityArea.parentElement.insertBefore(connectionPanel, activityArea);
 $("arduinoConnectBtn").addEventListener("click", () => {
-  if (serialPort) disconnectArduino();
-  else connectArduino();
+  if (serialPort) disconnectArduino(); else connectArduino();
+});
+$("radarConnectBtn").addEventListener("click", () => {
+  if (radarPort) disconnectSpeedRadar(); else connectSpeedRadar();
 });
 
 // Activity log
