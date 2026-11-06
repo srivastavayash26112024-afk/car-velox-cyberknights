@@ -53,7 +53,7 @@ async function connectArduino() {
       const { value, done } = await serialReader.read();
       if (done) break;
       serialBuffer += decoder.decode(value, { stream: true });
-      const lines = serialBuffer.split(/\\r?\\n/);
+      const lines = serialBuffer.split(/\r?\n/);
       serialBuffer = lines.pop() || "";
       for (const line of lines) processTollData(line.trim());
     }
@@ -85,7 +85,7 @@ async function connectSpeedRadar() {
       const { value, done } = await radarReader.read();
       if (done) break;
       radarBuffer += decoder.decode(value, { stream: true });
-      const lines = radarBuffer.split(/\\r?\\n/);
+      const lines = radarBuffer.split(/\r?\n/);
       radarBuffer = lines.pop() || "";
       for (const line of lines) processRadarData(line.trim());
     }
@@ -118,8 +118,8 @@ function processRadarData(line) {
   if (!line) return;
   // Supported line: speed = 25.5 km/h dir = A>B (or B>A).
   // Also accept a plain "SPEED:25.5,DIR:A>B" telemetry line.
-  const match = line.match(/speed\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*km\\/h\\s+dir\\s*=\\s*(A>B|B>A)/i)
-    || line.match(/SPEED\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*,\\s*DIR\\s*:\\s*(A>B|B>A)/i);
+  const match = line.match(/speed\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*km\/h\s+dir\s*=\s*(A>B|B>A)/i)
+    || line.match(/SPEED\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*,\s*DIR\s*:\s*(A>B|B>A)/i);
   if (!match) {
     if (/^RADAR_READY$/i.test(line)) log("Speed radar is ready.");
     return;
@@ -143,7 +143,7 @@ async function sendGateCommand(command) {
   let writer;
   try {
     writer = serialPort.writable.getWriter();
-    await writer.write(new TextEncoder().encode(command + "\\n"));
+    await writer.write(new TextEncoder().encode(command + "\n"));
     log("Sent " + command + " command to toll Arduino.");
     return true;
   } catch (error) {
