@@ -81,7 +81,7 @@ void readSerialCommands() {
   static String command = "";
   while (Serial.available()) {
     char c = (char)Serial.read();
-    if (c == '\\n' || c == '\\r') {
+    if (c == '\n' || c == '\r') {
       if (command.length()) handleCommand(command);
       command = "";
     } else if (command.length() < 24) {
