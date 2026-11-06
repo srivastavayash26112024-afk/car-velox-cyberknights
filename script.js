@@ -43,7 +43,7 @@ async function connectArduino() {
       const { value, done } = await serialReader.read();
       if (done) break;
       serialBuffer += decoder.decode(value, { stream: true });
-      const lines = serialBuffer.split(/\\r?\\n/);
+      const lines = serialBuffer.split(/\r?\n/);
       serialBuffer = lines.pop() || "";
       for (const line of lines) processArduinoData(line.trim());
     }
@@ -84,7 +84,7 @@ function processArduinoData(line) {
     return;
   }
 
-  const match = line.match(/speed\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*km\\/h\\s+dir\\s*=\\s*(A>B|B>A)/i);
+  const match = line.match(/speed\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*km\/h\s+dir\s*=\s*(A>B|B>A)/i);
   if (match) {
     speed = parseFloat(match[1]);
     hardwareDirection = match[2].toUpperCase();
@@ -109,7 +109,7 @@ async function sendGateCommand(command) {
   let writer;
   try {
     writer = serialPort.writable.getWriter();
-    await writer.write(new TextEncoder().encode(command + "\\n"));
+    await writer.write(new TextEncoder().encode(command + "\n"));
     log("Sent " + command + " command to Arduino.");
     return true;
   } catch (error) {
