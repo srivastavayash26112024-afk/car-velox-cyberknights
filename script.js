@@ -17,57 +17,50 @@ let history = [];
 let lastFrame = 0;
 
 // ===== REAL ARDUINO CONNECTION =====
-
+// Protocol: browser sends OPEN or CLOSE; Arduino replies GATE:OPEN / GATE:CLOSED.
+// Keep this baud rate identical to Serial.begin(9600) in toll_gate.ino.
 let serialPort = null;
 let serialReader = null;
 let hardwareConnected = false;
 let hardwareDirection = "STOP";
+let serialBuffer = "";
 
 async function connectArduino() {
   if (!("serial" in navigator)) {
-    alert("Web Serial is unavailable. Please use Google Chrome.");
+    alert("Web Serial is unavailable. Open this HTTPS site in Google Chrome or Microsoft Edge on a computer.");
     return;
   }
-
   try {
     serialPort = await navigator.serial.requestPort();
-    await serialPort.open({ baudRate: 115200 });
-
+    await serialPort.open({ baudRate: 9600 });
     hardwareConnected = true;
     $("arduinoStatus").textContent = "ARDUINO CONNECTED";
     $("arduinoConnectBtn").textContent = "Disconnect Arduino";
-
-    log("Arduino connected successfully.");
-
+    log("Arduino connected at 9600 baud.");
     const decoder = new TextDecoder();
     serialReader = serialPort.readable.getReader();
-    let buffer = "";
-
     while (true) {
       const { value, done } = await serialReader.read();
       if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        processArduinoData(line.trim());
-      }
+      serialBuffer += decoder.decode(value, { stream: true });
+      const lines = serialBuffer.split(/\\r?\\n/);
+      serialBuffer = lines.pop() || "";
+      for (const line of lines) processArduinoData(line.trim());
     }
-
   } catch (error) {
     console.error(error);
     log("Arduino connection error: " + error.message);
   } finally {
     if (serialReader) {
-      serialReader.releaseLock();
+      try { serialReader.releaseLock(); } catch (_) {}
       serialReader = null;
     }
-
-    hardwareConnected = false;
+    const portToClose = serialPort;
     serialPort = null;
+    hardwareConnected = false;
+    if (portToClose) {
+      try { await portToClose.close(); } catch (_) {}
+    }
     $("arduinoStatus").textContent = "ARDUINO DISCONNECTED";
     $("arduinoConnectBtn").textContent = "Connect Arduino";
     update();
@@ -75,64 +68,76 @@ async function connectArduino() {
 }
 
 function processArduinoData(line) {
-  const match = line.match(
-    /speed\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*km\/h\s+dir\s*=\s*(A>B|B>A)/i
-  );
+  if (!line) return;
+  const normalized = line.toUpperCase();
 
-  if (!match) return;
+  if (normalized === "GATE:OPEN" || normalized.includes("GATE OPENED")) {
+    barrierOpen = true;
+    update();
+    log("Physical toll gate is OPEN.");
+    return;
+  }
+  if (normalized === "GATE:CLOSED" || normalized.includes("GATE CLOSED")) {
+    barrierOpen = false;
+    update();
+    log("Physical toll gate is CLOSED.");
+    return;
+  }
 
-  speed = parseFloat(match[1]);
-  hardwareDirection = match[2].toUpperCase();
+  const match = line.match(/speed\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*km\\/h\\s+dir\\s*=\\s*(A>B|B>A)/i);
+  if (match) {
+    speed = parseFloat(match[1]);
+    hardwareDirection = match[2].toUpperCase();
+    maxSpeed = Math.max(maxSpeed, speed);
+    vehicleCount++;
+    running = speed > 0;
+    history.push(speed);
+    if (history.length > 30) history.shift();
+    update();
+    log("Vehicle detected: " + speed.toFixed(2) + " km/h, direction " + hardwareDirection);
+    return;
+  }
 
-  maxSpeed = Math.max(maxSpeed, speed);
-  vehicleCount++;
+  if (normalized.startsWith("SENSOR:")) log("Arduino " + line);
+}
 
-  running = speed > 0;
-
-  history.push(speed);
-  if (history.length > 30) history.shift();
-
-  update();
-
-  log("Vehicle detected: " + speed.toFixed(2) +
-      " km/h, direction " + hardwareDirection);
+async function sendGateCommand(command) {
+  if (!hardwareConnected || !serialPort || !serialPort.writable) {
+    log("Cannot send " + command + ": Arduino is not connected.");
+    return false;
+  }
+  let writer;
+  try {
+    writer = serialPort.writable.getWriter();
+    await writer.write(new TextEncoder().encode(command + "\\n"));
+    log("Sent " + command + " command to Arduino.");
+    return true;
+  } catch (error) {
+    log("Failed to send command: " + error.message);
+    return false;
+  } finally {
+    if (writer) writer.releaseLock();
+  }
 }
 
 async function disconnectArduino() {
   if (serialReader) {
-    await serialReader.cancel();
+    try { await serialReader.cancel(); } catch (_) {}
   }
 }
 
-// Create connection controls
 const arduinoPanel = document.createElement("div");
-arduinoPanel.style.cssText =
-  "display:flex;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap;";
-
+arduinoPanel.style.cssText = "display:flex;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap;";
 arduinoPanel.innerHTML = `
-  <button id="arduinoConnectBtn"
-    style="padding:10px 16px;border-radius:8px;border:1px solid #40e8f2;
-    background:#10283b;color:#40e8f2;cursor:pointer;">
-    Connect Arduino
-  </button>
-  <span id="arduinoStatus" style="color:#ffbf69;">
-    ARDUINO DISCONNECTED
-  </span>
+  <button id="arduinoConnectBtn" style="padding:10px 16px;border-radius:8px;border:1px solid #40e8f2;background:#10283b;color:#40e8f2;cursor:pointer;">Connect Arduino</button>
+  <span id="arduinoStatus" style="color:#ffbf69;">ARDUINO DISCONNECTED</span>
 `;
-
 const activityArea = $("activityLog");
-if (activityArea) {
-  activityArea.parentElement.insertBefore(arduinoPanel, activityArea);
-}
-
+if (activityArea) activityArea.parentElement.insertBefore(arduinoPanel, activityArea);
 $("arduinoConnectBtn").addEventListener("click", () => {
-  if (serialPort) {
-    disconnectArduino();
-  } else {
-    connectArduino();
-  }
+  if (serialPort) disconnectArduino();
+  else connectArduino();
 });
-
 
 // Activity log
 function log(message) {
@@ -264,10 +269,17 @@ function reset() {
   log("Vehicle simulation reset.");
 }
 
-function toggleBarrier() {
-  barrierOpen = !barrierOpen;
+async function toggleBarrier() {
+  const nextState = !barrierOpen;
+  if (hardwareConnected) {
+    const sent = await sendGateCommand(nextState ? "OPEN" : "CLOSE");
+    if (!sent) return;
+    // Physical gate state is updated only after Arduino confirms it over Serial.
+    return;
+  }
+  barrierOpen = nextState;
   update();
-  log(barrierOpen ? "Toll barrier opened." : "Toll barrier closed.");
+  log(barrierOpen ? "Toll barrier opened (dashboard demo)." : "Toll barrier closed (dashboard demo).");
 }
 
 function vehiclePassed() {
